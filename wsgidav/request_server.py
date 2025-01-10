@@ -1,11 +1,11 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Original PyFileServer (c) 2005 Ho Chun Wei.
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
 """
 WSGI application that handles one single WebDAV request.
 """
+
 from urllib.parse import unquote, urlparse
 
 from wsgidav import util, xml_tools
@@ -17,7 +17,6 @@ from wsgidav.dav_error import (
     HTTP_FAILED_DEPENDENCY,
     HTTP_FORBIDDEN,
     HTTP_INTERNAL_ERROR,
-    HTTP_LENGTH_REQUIRED,
     HTTP_MEDIATYPE_NOT_SUPPORTED,
     HTTP_METHOD_NOT_ALLOWED,
     HTTP_NO_CONTENT,
@@ -101,7 +100,7 @@ class RequestServer:
             method_name = f"do_{requestmethod}"
             method = getattr(self, method_name, None)
         if not method:
-            _logger.error("Invalid HTTP method {requestmethod!r}")
+            _logger.error(f"Invalid HTTP method {requestmethod!r}")
             self._fail(HTTP_METHOD_NOT_ALLOWED)
 
         if environ.get("wsgidav.debug_break"):
@@ -116,8 +115,7 @@ class RequestServer:
             )
             # sort: 0:"calls",1:"time", 2: "cumulative"
             profile.print_stats(sort=2)
-            for v in res:
-                yield v
+            yield from res
             if hasattr(res, "close"):
                 res.close()
             return
@@ -128,9 +126,7 @@ class RequestServer:
         # _logger.warning("#1... 2")
         try:
             # _logger.warning("#1... 3")
-            for v in app_iter:
-                # _logger.warning("#1... 4")
-                yield v
+            yield from app_iter
             # _logger.warning("#1... 5")
         # except Exception:
         #     _logger.warning("#1... 6")
@@ -183,9 +179,9 @@ class RequestServer:
             assert isinstance(e, DAVError)
             responseEL = etree.SubElement(multistatusEL, "{DAV:}response")
             etree.SubElement(responseEL, "{DAV:}href").text = refurl
-            etree.SubElement(responseEL, "{DAV:}status").text = "HTTP/1.1 {}".format(
-                get_http_status_string(e)
-            )
+            etree.SubElement(
+                responseEL, "{DAV:}status"
+            ).text = f"HTTP/1.1 {get_http_status_string(e)}"
 
         return util.send_multi_status_response(environ, start_response, multistatusEL)
 
@@ -233,7 +229,7 @@ class RequestServer:
         if res is None:
             return
 
-        ifDict = environ["wsgidav.conditions.if"]
+        if_dict = environ["wsgidav.conditions.if"]
 
         # Raise HTTP_PRECONDITION_FAILED or HTTP_NOT_MODIFIED, if standard
         # HTTP condition fails
@@ -241,9 +237,9 @@ class RequestServer:
         if res.get_last_modified() is not None:
             last_modified = int(res.get_last_modified())
 
-        entitytag = checked_etag(res.get_etag(), allow_none=True)
-        if entitytag is None:
-            entitytag = "[]"  # Non-valid entity tag
+        etag = checked_etag(res.get_etag(), allow_none=True)
+        if etag is None:
+            etag = "[]"  # Non-valid entity tag
 
         if (
             "HTTP_IF_MODIFIED_SINCE" in environ
@@ -251,7 +247,7 @@ class RequestServer:
             or "HTTP_IF_MATCH" in environ
             or "HTTP_IF_NONE_MATCH" in environ
         ):
-            util.evaluate_http_conditionals(res, last_modified, entitytag, environ)
+            util.evaluate_http_conditionals(res, last_modified, etag, environ)
 
         if "HTTP_IF" not in environ:
             return
@@ -263,15 +259,15 @@ class RequestServer:
 
         ref_url = res.get_ref_url()
         lock_man = self._davProvider.lock_manager
-        locktokenlist = []
+        locktoken_list = []
         if lock_man:
             lockList = lock_man.get_indirect_url_lock_list(
                 ref_url, principal=environ["wsgidav.user_name"]
             )
             for lock in lockList:
-                locktokenlist.append(lock["token"])
+                locktoken_list.append(lock["token"])
 
-        if not util.test_if_header_dict(res, ifDict, ref_url, locktokenlist, entitytag):
+        if not util.test_if_header_dict(res, if_dict, ref_url, locktoken_list, etag):
             self._fail(HTTP_PRECONDITION_FAILED, "'If' header condition failed.")
 
         return
@@ -287,10 +283,10 @@ class RequestServer:
         # RFC: By default, the PROPFIND method without a Depth header MUST act
         # as if a "Depth: infinity" header was included.
         environ.setdefault("HTTP_DEPTH", "infinity")
-        if not environ["HTTP_DEPTH"] in ("0", "1", "infinity"):
+        if environ["HTTP_DEPTH"] not in ("0", "1", "infinity"):
             self._fail(
                 HTTP_BAD_REQUEST,
-                "Invalid Depth header: '{}'.".format(environ["HTTP_DEPTH"]),
+                "Invalid Depth header: {!r}.".format(environ["HTTP_DEPTH"]),
             )
 
         if environ["HTTP_DEPTH"] == "infinity" and not self.allow_propfind_infinite:
@@ -357,7 +353,6 @@ class RequestServer:
         responsedescription = []
 
         for child in reslist:
-
             if propFindMode == "allprop":
                 propList = child.get_properties("allprop")
             elif propFindMode == "name":
@@ -440,7 +435,7 @@ class RequestServer:
         successflag = True
         writeresultlist = []
 
-        for (name, propvalue) in propupdatelist:
+        for name, propvalue in propupdatelist:
             try:
                 res.set_property_value(name, propvalue, dry_run=True)
             except Exception as e:
@@ -457,7 +452,7 @@ class RequestServer:
 
         if not successflag:
             # If dry run failed: convert all OK to FAILED_DEPENDENCY.
-            for (name, result) in writeresultlist:
+            for name, result in writeresultlist:
                 if result == "200 OK":
                     result = DAVError(HTTP_FAILED_DEPENDENCY)
                 elif isinstance(result, DAVError):
@@ -468,7 +463,7 @@ class RequestServer:
             # Dry-run succeeded: set properties again, this time in 'real' mode
             # In theory, there should be no exceptions thrown here, but this is
             # real live...
-            for (name, propvalue) in propupdatelist:
+            for name, propvalue in propupdatelist:
                 try:
                     res.set_property_value(name, propvalue, dry_run=False)
                     # Set value to None, so the response xml contains empty tags
@@ -566,7 +561,7 @@ class RequestServer:
                     "Only Depth: infinity is supported for collections.",
                 )
         else:
-            if not environ.setdefault("HTTP_DEPTH", "0") in ("0", "infinity"):
+            if environ.setdefault("HTTP_DEPTH", "0") not in ("0", "infinity"):
                 self._fail(
                     HTTP_BAD_REQUEST,
                     "Only Depth: 0 or infinity are supported for non-collections.",
@@ -635,9 +630,7 @@ class RequestServer:
         ignore_dict = {}
         for child_res in reverse_child_ist:
             if child_res.path in ignore_dict:
-                _logger.debug(
-                    "Skipping {} (contains error child)".format(child_res.path)
-                )
+                _logger.debug(f"Skipping {child_res.path} (contains error child)")
                 ignore_dict[util.get_uri_parent(child_res.path)] = ""
                 continue
 
@@ -662,92 +655,15 @@ class RequestServer:
             environ, start_response, res, HTTP_NO_CONTENT, error_list
         )
 
-    def _stream_data_chunked(self, environ, block_size):
-        """Get the data from a chunked transfer."""
-        # Chunked Transfer Coding
-        # http://www.servlets.com/rfcs/rfc2616-sec3.html#sec3.6.1
-
-        if "Darwin" in environ.get("HTTP_USER_AGENT", "") and environ.get(
-            "HTTP_X_EXPECTED_ENTITY_LENGTH"
-        ):
-            # Mac Finder, that does not prepend chunk-size + CRLF ,
-            # like it should to comply with the spec. It sends chunk
-            # size as integer in a HTTP header instead.
-            WORKAROUND_CHUNK_LENGTH = True
-            buf = environ.get("HTTP_X_EXPECTED_ENTITY_LENGTH", "0")
-            length = int(buf)
-        else:
-            WORKAROUND_CHUNK_LENGTH = False
-            buf = environ["wsgi.input"].readline()
-            environ["wsgidav.some_input_read"] = 1
-            if buf == b"":
-                length = 0
-            else:
-                length = int(buf, 16)
-
-        while length > 0:
+    def _stream_data(self, environ, block_size):
+        """Get the data."""
+        while True:
             buf = environ["wsgi.input"].read(block_size)
+            if buf == b"":
+                break
+            environ["wsgidav.some_input_read"] = 1
             yield buf
-            if WORKAROUND_CHUNK_LENGTH:
-                environ["wsgidav.some_input_read"] = 1
-                # Keep receiving until we read expected size or reach
-                # EOF
-                if buf == b"":
-                    length = 0
-                else:
-                    length -= len(buf)
-            else:
-                environ["wsgi.input"].readline()
-                buf = environ["wsgi.input"].readline()
-                if buf == b"":
-                    length = 0
-                else:
-                    length = int(buf, 16)
         environ["wsgidav.all_input_read"] = 1
-
-    def _stream_data(self, environ, content_length, block_size):
-        """Get the data from a non-chunked transfer."""
-        if content_length == 0:
-            # TODO: review this
-            # Windows MiniRedir submit PUT with Content-Length 0,
-            # before LOCK and the real PUT. So we have to accept this.
-            _logger.debug("PUT: Content-Length == 0. Creating empty file...")
-
-        #        elif content_length < 0:
-        #            # TODO: review this
-        #            # If CONTENT_LENGTH is invalid, we may try to workaround this
-        #            # by reading until the end of the stream. This may block however!
-        #            # The iterator produced small chunks of varying size, but not
-        #            # sure, if we always get everything before it times out.
-        #            _logger.warning("PUT with invalid Content-Length (%s). "
-        #                            "Trying to read all (this may timeout)..."
-        #                            .format(environ.get("CONTENT_LENGTH")))
-        #            nb = 0
-        #            try:
-        #                for s in environ["wsgi.input"]:
-        #                    environ["wsgidav.some_input_read"] = 1
-        #                    _logger.debug("PUT: read from wsgi.input.__iter__, len=%s" % len(s))
-        #                    yield s
-        #                    nb += len (s)
-        #            except socket.timeout:
-        #                _logger.warning("PUT: input timed out after writing %s bytes" % nb)
-        #                hasErrors = True
-        else:
-            assert content_length > 0
-            contentremain = content_length
-            while contentremain > 0:
-                n = min(contentremain, block_size)
-                readbuffer = environ["wsgi.input"].read(n)
-                # This happens with litmus expect-100 test:
-                if not len(readbuffer) > 0:
-                    _logger.error("input.read({}) returned 0 bytes".format(n))
-                    break
-                environ["wsgidav.some_input_read"] = 1
-                yield readbuffer
-                contentremain -= len(readbuffer)
-
-            if contentremain == 0:
-                environ["wsgidav.all_input_read"] = 1
 
     def do_PUT(self, environ, start_response):
         """
@@ -788,42 +704,9 @@ class RequestServer:
         else:
             self._check_write_permission(res, "0", environ)
 
-        # Start Content Processing
-        # Content-Length may be 0 or greater. (Set to -1 if missing or invalid.)
-        #        WORKAROUND_BAD_LENGTH = True
-        try:
-            content_length = max(-1, int(environ.get("CONTENT_LENGTH", -1)))
-        except ValueError:
-            content_length = -1
-
-        #        if content_length < 0 and not WORKAROUND_BAD_LENGTH:
-        if (content_length < 0) and (
-            environ.get("HTTP_TRANSFER_ENCODING", "").lower() != "chunked"
-        ):
-            # HOTFIX: not fully understood, but MS sends PUT without content-length,
-            # when creating new files
-            agent = environ.get("HTTP_USER_AGENT", "")
-            if "Microsoft-WebDAV-MiniRedir" in agent or "gvfs/" in agent:  # issue #10
-                _logger.warning(
-                    "Setting misssing Content-Length to 0 for MS / gvfs client"
-                )
-                content_length = 0
-            else:
-                util.fail(
-                    HTTP_LENGTH_REQUIRED,
-                    "PUT request with invalid Content-Length: ({})".format(
-                        environ.get("CONTENT_LENGTH")
-                    ),
-                )
-
         hasErrors = False
         try:
-            if environ.get("HTTP_TRANSFER_ENCODING", "").lower() == "chunked":
-                data_stream = self._stream_data_chunked(environ, self.block_size)
-            else:
-                data_stream = self._stream_data(
-                    environ, content_length, self.block_size
-                )
+            data_stream = self._stream_data(environ, self.block_size)
 
             fileobj = res.begin_write(content_type=environ.get("CONTENT_TYPE"))
 
@@ -850,9 +733,9 @@ class RequestServer:
 
         headers = None
         if res.support_etag():
-            entitytag = checked_etag(res.get_etag(), allow_none=True)
-            if entitytag is not None:
-                headers = [("ETag", '"{}"'.format(entitytag))]
+            etag = checked_etag(res.get_etag(), allow_none=True)
+            if etag is not None:
+                headers = [("ETag", f'"{etag}"')]
 
         if isnewfile:
             return util.send_status_response(
@@ -906,7 +789,7 @@ class RequestServer:
             # <A:propertybehavior xmlns:A="DAV:"> <A:keepalive>*</A:keepalive>
             body = environ["wsgi.input"].read(util.get_content_length(environ))
             environ["wsgidav.all_input_read"] = 1
-            _logger.info("Ignored copy/move  body: '{}'...".format(body[:50]))
+            _logger.info(f"Ignored copy/move  body: {body[:50]!r}...")
 
         if src_res.is_collection:
             # The COPY method on a collection without a Depth header MUST act as
@@ -1075,7 +958,7 @@ class RequestServer:
                 # header is "T", then prior to performing the move, the server
                 # MUST perform a DELETE with "Depth: infinity" on the
                 # destination resource.
-                _logger.debug("Remove dest before move: '{}'".format(dest_res))
+                _logger.debug(f"Remove dest before move: {dest_res!r}")
                 dest_res.delete()
                 dest_res = None
             else:
@@ -1089,15 +972,13 @@ class RequestServer:
                     depth_first=True, add_self=False
                 )
                 src_path_list = [s.path for s in src_list]
-                _logger.debug("check src_path_list: {}".format(src_path_list))
+                _logger.debug(f"check src_path_list: {src_path_list}")
                 for dres in reverse_dest_list:
-                    _logger.debug("check unmatched dest before copy: {}".format(dres))
+                    _logger.debug(f"check unmatched dest before copy: {dres}")
                     rel_url = dres.path[dest_root_len:]
                     sp = src_path + rel_url
                     if sp not in src_path_list:
-                        _logger.debug(
-                            "Remove unmatched dest before copy: {}".format(dres)
-                        )
+                        _logger.debug(f"Remove unmatched dest before copy: {dres}")
                         dres.delete()
 
         # --- Let provider implement recursive move ---------------------------
@@ -1117,9 +998,7 @@ class RequestServer:
 
             if not has_conflicts:
                 try:
-                    _logger.debug(
-                        "Recursive move: {} -> '{}'".format(src_res, dest_path)
-                    )
+                    _logger.debug(f"Recursive move: {src_res} -> {dest_path!r}")
                     error_list = src_res.move_recursive(dest_path)
                 except Exception as e:
                     _debug_exception(e)
@@ -1150,9 +1029,7 @@ class RequestServer:
                     parent_error = True
                     break
             if parent_error:
-                _logger.debug(
-                    "Copy: skipping '{}', because of parent error".format(sres.path)
-                )
+                _logger.debug(f"Copy: skipping {sres.path!r}, because of parent error")
                 continue
 
             try:
@@ -1187,7 +1064,7 @@ class RequestServer:
         if is_move:
             reverse_src_list = src_list[:]
             reverse_src_list.reverse()
-            _logger.debug("Delete after move, ignore_dict={}".format(ignore_dict))
+            _logger.debug(f"Delete after move, ignore_dict={ignore_dict}")
             for sres in reverse_src_list:
                 # Non-collections have already been removed in the copy loop.
                 if not sres.is_collection:
@@ -1200,20 +1077,18 @@ class RequestServer:
                         break
                 if child_error:
                     _logger.debug(
-                        "Delete after move: skipping '{}', because of child error".format(
-                            sres.path
-                        )
+                        f"Delete after move: skipping {sres.path!r}, because of child error"
                     )
                     continue
 
                 try:
-                    _logger.debug("Remove collection after move: {}".format(sres))
+                    _logger.debug(f"Remove collection after move: {sres}")
                     sres.delete()
                 except Exception as e:
                     _debug_exception(e)
                     error_list.append((src_res.get_href(), as_DAVError(e)))
 
-            _logger.debug("ErrorList: {}".format(error_list))
+            _logger.debug(f"ErrorList: {error_list}")
 
         # --- Return response -------------------------------------------------
 
@@ -1327,7 +1202,7 @@ class RequestServer:
                 lock_owner = xml_tools.xml_to_bytes(linode, pretty=False)
 
             else:
-                self._fail(HTTP_BAD_REQUEST, "Invalid node '{}'.".format(linode.tag))
+                self._fail(HTTP_BAD_REQUEST, f"Invalid node {linode.tag!r}.")
 
         if not lock_scope:
             self._fail(HTTP_BAD_REQUEST, "Missing or invalid lockscope.")
@@ -1599,12 +1474,12 @@ class RequestServer:
         if last_modified is None:
             last_modified = -1
 
-        entitytag = checked_etag(res.get_etag(), allow_none=True)
-        if entitytag is None:
-            entitytag = "[]"
+        etag = checked_etag(res.get_etag(), allow_none=True)
+        if etag is None:
+            etag = "[]"
 
         # Ranges
-        doignoreranges = (
+        do_ignore_ranges = (
             not res.support_content_length()
             or not res.support_ranges()
             or filesize == 0
@@ -1612,30 +1487,30 @@ class RequestServer:
         if (
             "HTTP_RANGE" in environ
             and "HTTP_IF_RANGE" in environ
-            and not doignoreranges
+            and not do_ignore_ranges
         ):
-            ifrange = environ["HTTP_IF_RANGE"]
+            if_range = environ["HTTP_IF_RANGE"]
             # Try as http-date first (Return None, if invalid date string)
-            secstime = util.parse_time_string(ifrange)
+            secstime = util.parse_time_string(if_range)
             if secstime:
                 # cast to integer, as last_modified may be a floating point number
                 if int(last_modified) != secstime:
-                    doignoreranges = True
+                    do_ignore_ranges = True
             else:
                 # Use as entity tag
-                ifrange = ifrange.strip('" ')
-                if entitytag is None or ifrange != entitytag:
-                    doignoreranges = True
+                if_range = if_range.strip('" ')
+                if etag is None or if_range != etag:
+                    do_ignore_ranges = True
 
-        ispartialranges = False
-        if "HTTP_RANGE" in environ and not doignoreranges:
-            ispartialranges = True
+        is_partial_ranges = False
+        if "HTTP_RANGE" in environ and not do_ignore_ranges:
+            is_partial_ranges = True
             list_ranges, _totallength = util.obtain_content_ranges(
                 environ["HTTP_RANGE"], filesize
             )
             if len(list_ranges) == 0:
                 # No valid ranges present
-                self._fail(HTTP_RANGE_NOT_SATISFIABLE)
+                self._fail(HTTP_RANGE_NOT_SATISFIABLE, "No valid ranges present")
 
             # More than one range present -> take only the first range, since
             # multiple range returns require multipart, which is not supported
@@ -1659,25 +1534,23 @@ class RequestServer:
         response_headers.append(("Content-Type", mimetype))
         response_headers.append(("Date", util.get_rfc1123_time()))
         if res.support_etag():
-            response_headers.append(("ETag", '"{}"'.format(entitytag)))
+            response_headers.append(("ETag", f'"{etag}"'))
 
         if res.support_ranges():
             response_headers.append(("Accept-Ranges", "bytes"))
 
         if "response_headers" in environ["wsgidav.config"]:
-            customHeaders = environ["wsgidav.config"]["response_headers"]
-            for header, value in customHeaders:
+            custom_headers = environ["wsgidav.config"]["response_headers"]
+            for header, value in custom_headers:
                 response_headers.append((header, value))
 
         res.finalize_headers(environ, response_headers)
 
-        if ispartialranges:
-            # response_headers.append(("Content-Ranges", "bytes " + str(range_start) + "-" +
-            #    str(range_end) + "/" + str(range_length)))
+        if is_partial_ranges:
             response_headers.append(
                 (
                     "Content-Range",
-                    "bytes {}-{}/{}".format(range_start, range_end, filesize),
+                    f"bytes {range_start}-{range_end}/{filesize}",
                 )
             )
             start_response("206 Partial Content", response_headers)
@@ -1691,7 +1564,7 @@ class RequestServer:
 
         fileobj = res.get_content()
 
-        if not doignoreranges:
+        if not do_ignore_ranges:
             fileobj.seek(range_start)
 
         contentlengthremaining = range_length

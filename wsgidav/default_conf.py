@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Original PyFileServer (c) 2005 Ho Chun Wei.
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
@@ -12,8 +11,9 @@ r"""
     |__/|__/___/\_, /_/____/_/ |_|___/
                /___/
 
-Default confguration.
+Default configuration.
 """
+
 # from wsgidav.mw.debug_filter import WsgiDavDebugFilter
 from wsgidav.dir_browser import WsgiDavDirBrowser
 from wsgidav.error_printer import ErrorPrinter
@@ -35,11 +35,16 @@ DEFAULT_CONFIG = {
     "port": 8080,
     "mount_path": None,  # Application root, e.g. <mount_path>/<share_name>/<res_path>
     "provider_mapping": {},
+    "fs_dav_provider": {
+        "shadow_map": {},
+        "follow_symlinks": False,
+    },
     "add_header_MS_Author_Via": True,
     "hotfixes": {
         "emulate_win32_lastmod": False,  # True: support Win32LastModifiedTime
         "re_encode_path_info": True,  # (See issue #73)
         "unquote_path_info": False,  # (See issue #8, #228)
+        # "accept_put_without_content_length": True,  # (See issue #10, #282)
         # "treat_root_options_as_asterisk": False, # Hotfix for WinXP / Vista: accept 'OPTIONS /' for a 'OPTIONS *'
         # "win_accept_anonymous_options": False,
         # "winxp_accept_root_share_login": False,
@@ -76,8 +81,11 @@ DEFAULT_CONFIG = {
     #: 5 - show full request/response header info (HTTP Logging)
     #:     request body and GET response bodies not shown
     "verbose": DEFAULT_VERBOSE,
+    #: Suppress version info in HTTP response headers and error responses
+    "suppress_version_info": False,
     #: Log options
     "logging": {
+        "enable": None,  # True: activate 'wsgidav' logger (in library mode)
         "logger_date_format": DEFAULT_LOGGER_DATE_FORMAT,
         "logger_format": DEFAULT_LOGGER_FORMAT,
         "enable_loggers": [],

@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Licensed under the MIT license: http://www.opensource.org/licenses/mit-license.php
 """
 Sample implementation of a DAV provider that provides a browsable,
@@ -95,6 +94,7 @@ When accessed using WebDAV, the following URLs both return the same resource
     <share>/by_tag/hot/My doc 1
     <share>/by_key/1
 """
+
 import os
 import stat
 from io import BytesIO
@@ -151,7 +151,7 @@ _resourceData = [
     },
     {
         "key": "3",
-        "title": "My doc (euro:\u20AC, uuml:��)".encode("utf8"),
+        "title": "My doc (euro:\u20ac, uuml:��)".encode(),
         "orga": "marketing",
         "tags": ["nice"],
         "status": "published",
@@ -191,7 +191,7 @@ class RootCollection(DAVCollection):
     _validMemberNames = _visibleMemberNames + ("by_key",)
 
     def __init__(self, environ):
-        DAVCollection.__init__(self, "/", environ)
+        super().__init__("/", environ)
 
     def get_member_names(self):
         return self._visibleMemberNames
@@ -207,7 +207,7 @@ class CategoryTypeCollection(DAVCollection):
     """Resolve '/catType' URLs, for example '/by_tag'."""
 
     def __init__(self, path, environ):
-        DAVCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
 
     def get_display_info(self):
         return {"type": "Category type"}
@@ -216,10 +216,10 @@ class CategoryTypeCollection(DAVCollection):
         names = []
         for data in _resourceData:
             if self.name == "by_status":
-                if not data["status"] in names:
+                if data["status"] not in names:
                     names.append(data["status"])
             elif self.name == "by_orga":
-                if not data["orga"] in names:
+                if data["orga"] not in names:
                     names.append(data["orga"])
             elif self.name == "by_tag":
                 for tag in data["tags"]:
@@ -243,7 +243,7 @@ class CategoryCollection(DAVCollection):
     """Resolve '/catType/cat' URLs, for example '/by_tag/cool'."""
 
     def __init__(self, path, environ, catType):
-        DAVCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
         self.catType = catType
 
     def get_display_info(self):
@@ -285,7 +285,7 @@ class VirtualResource(DAVCollection):
     ]
 
     def __init__(self, path, environ, data):
-        DAVCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
         self.data = data
 
     def get_display_info(self):
@@ -419,7 +419,7 @@ class _VirtualNonCollection(DAVNonCollection):
     """Abstract base class for all non-collection resources."""
 
     def __init__(self, path, environ):
-        DAVNonCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
 
     def get_content_length(self):
         return None
@@ -462,7 +462,7 @@ class VirtualArtifact(_VirtualNonCollection):
 
     def __init__(self, path, environ, data):
         #        assert name in _artifactNames
-        _VirtualNonCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
         self.data = data
 
     def get_content_length(self):
@@ -480,12 +480,12 @@ class VirtualArtifact(_VirtualNonCollection):
         return True
 
     def get_ref_url(self):
-        refPath = "/by_key/%s/%s" % (self.data["key"], self.name)
+        refPath = "/by_key/{}/{}".format(self.data["key"], self.name)
         return quote(self.provider.share_path + refPath)
 
     def get_content(self):
         fileLinks = [
-            "<a href='%s'>%s</a>\n" % (os.path.basename(f), f)
+            f"<a href='{os.path.basename(f)}'>{f}</a>\n"
             for f in self.data["resPathList"]
         ]
         dict = self.data.copy()
@@ -550,7 +550,7 @@ class VirtualResFile(_VirtualNonCollection):
     def __init__(self, path, environ, data, file_path):
         if not os.path.exists(file_path):
             _logger.error("VirtualResFile(%r) does not exist." % file_path)
-        _VirtualNonCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
         self.data = data
         self.file_path = file_path
 
@@ -579,7 +579,9 @@ class VirtualResFile(_VirtualNonCollection):
         return statresults[stat.ST_MTIME]
 
     def get_ref_url(self):
-        refPath = "/by_key/%s/%s" % (self.data["key"], os.path.basename(self.file_path))
+        refPath = "/by_key/{}/{}".format(
+            self.data["key"], os.path.basename(self.file_path)
+        )
         return quote(self.provider.share_path + refPath)
 
     def get_content(self):

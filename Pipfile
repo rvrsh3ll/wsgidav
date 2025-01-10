@@ -4,44 +4,42 @@ verify_ssl = true
 name = "pypi"
 
 [dev-packages]
-black = "~=22.6"
+# black = "~=24.3"
 Cheroot = "*"  # "~=8.5"
-cx_Freeze = {version = "*", os_name = "== 'nt'"}
-flake8 = "*"  # "~=3.8"
-flake8-bugbear = "*"  # "~=20.1"
-flake8-quotes = "*"  # "~=1.0"
-isort = "*"
+cx_Freeze = {version = "*", markers="sys_platform == 'win32'"}
+# isort = "*"
 mypy = "*"
 Paste = "*"  # "~=2.0"
 pylint = "*"
-pytest = "*"  # "~=4.6"
-pytest-cov = "*"  # "~=2.10"
+pytest = "*"  # "~=7.3"
+pytest-cov = "*"  # "~=4.0"
+pytest-html = "*"
 python-pam = "*"  # "~=1.8"
-pywin32 = {version = "*", os_name = "== 'nt'"}
-recommonmark = "*"
+pywin32 = {version = "*", markers="sys_platform == 'win32'"}
+# recommonmark = "*"
 requests = "*"
-rope = "*"
+# rope = "*"
+ruff = "*"
 setuptools = "*"
-Sphinx = "~=4.3"
-sphinx_rtd_theme = "~=1.0"
+# Sphinx = "*"
+# sphinx_rtd_theme = "*"
 stressor = "*"
 tox = "*"  # "~=3.13"
 twine = "*"
 WebTest = "*"  # "~=2.0"
 wheel = "*"
 # wsgidav = {editable = true, path = "."}
-yabs = "*"
 safety = "*"
+yabs = "*"
 
 [packages]
-defusedxml = "*"  # "~=0.5"
+defusedxml = "*"  # "~=0.7"
 Jinja2 = "*"  # "~=2.10"
 PyYAML = "*"  # "~=5.1"
 json5 = "*"
-wsgidav = {editable = true, path = "."}
 
 [requires]
-python_version = "3.9"
+python_version = "3.12"
 
 [pipenv]
 # allow_prereleases = true

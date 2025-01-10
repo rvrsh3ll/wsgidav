@@ -1,15 +1,15 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
 """
-    Functional test suite for WsgiDAV.
+Functional test suite for WsgiDAV.
 
-    This test suite uses davclient to generate WebDAV requests.
+This test suite uses davclient to generate WebDAV requests.
 
-    See http://chandlerproject.org/Projects/Davclient
-        http://svn.osafoundation.org/tools/davclient/trunk/src/davclient/davclient.py
+See http://chandlerproject.org/Projects/Davclient
+    http://svn.osafoundation.org/tools/davclient/trunk/src/davclient/davclient.py
 """
+
 import os
 import time
 import unittest
@@ -100,8 +100,6 @@ class WsgiDAVServerThread(Thread):
             os.mkdir(self.rootpath)
         provider = FilesystemProvider(self.rootpath)
 
-        # config = DEFAULT_CONFIG.copy()
-        # config.update({
         config = {
             "provider_mapping": {"/": provider},
             "host": SERVER_HOST,

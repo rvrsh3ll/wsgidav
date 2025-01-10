@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Licensed under the MIT license: http://www.opensource.org/licenses/mit-license.php
 """
 Abstract base class of a domain controller (used by HTTPAuthenticator).
@@ -37,6 +36,7 @@ namespace in order to define access permissions for the following middleware
 TODO: Work In Progress / Subject to change
 
 """
+
 import sys
 from abc import ABC, abstractmethod
 from hashlib import md5
@@ -60,7 +60,7 @@ class BaseDomainController(ABC):
         self.config = config
 
     def __str__(self):
-        return "{}()".format(self.__class__.__name__)
+        return f"{self.__class__.__name__}()"
 
     def _calc_realm_from_path_provider(self, path_info, environ):
         """Internal helper for derived classes to implement get_domain_realm()."""
@@ -74,10 +74,8 @@ class BaseDomainController(ABC):
             _share, dav_provider = self.wsgidav_app.resolve_provider(path_info)
 
         if not dav_provider:
-            logger.warn(
-                "_calc_realm_from_path_provider('{}'): '{}'".format(
-                    util.safe_re_encode(path_info, sys.stdout.encoding), None
-                )
+            logger.warning(
+                f"_calc_realm_from_path_provider({util.safe_re_encode(path_info, sys.stdout.encoding)!r}): {None!r}"
             )
             return None
 

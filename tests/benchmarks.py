@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
 """
@@ -48,6 +47,7 @@ Test cases
       subfolder10-10/
         file10-10-1.txt -> 1k
 """
+
 import datetime
 import logging
 import platform
@@ -81,7 +81,6 @@ def _setup_fixture(opts, client):
 
 
 def _bench_litmus(opts):
-
     try:
         with Timing("litmus test suite"):
             # Run litmus test suite without printing output
@@ -156,7 +155,7 @@ def _bench_script(opts):
     with Timing("100 x MOVE 10 MB", 100, "{:>6.1f} req/sec"):
         name_from = "/test/bigfile-copy.txt"
         for i in range(100):
-            name_to = "/test/bigfile-copy-{}.txt".format(i)
+            name_to = f"/test/bigfile-copy-{i}.txt"
             client.move(name_from, name_to, depth="infinity", overwrite=True)
             name_from = name_to
         client.check_response()
@@ -197,20 +196,19 @@ def _bench_script(opts):
 
 
 def run_benchmarks(opts):
-
     py_version = "{}.{}.{}".format(*sys.version_info)
 
     print("#-- WsgiDAV Benchmark ---------------------------------------------")
-    print("Date:     {}".format(datetime.date.today()))
-    print("WsgiDAV:  {}".format(__version__))
-    print("Python:   {}".format(py_version))
-    print("CherryPy: {}".format(cp_version))
-    print("OS:       {}".format(platform.platform(aliased=True)))
+    print(f"Date:     {datetime.date.today()}")
+    print(f"WsgiDAV:  {__version__}")
+    print(f"Python:   {py_version}")
+    print(f"CherryPy: {cp_version}")
+    print(f"OS:       {platform.platform(aliased=True)}")
 
     if use_lxml:
         import lxml.etree
 
-        print("lxml:     {}".format(lxml.etree.LXML_VERSION))
+        print(f"lxml:     {lxml.etree.LXML_VERSION}")
     else:
         print("lxml:     (not installed)")
 

@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
 """Unit tests for wsgidav.util"""
@@ -126,9 +125,19 @@ class BasicTest(unittest.TestCase):
             assert (
                 fix_path("a/b", "/root/x", must_exist=False).lower() == r"c:\root\x\a\b"
             )
+            # NOTE:
+            # Changed in version 3.13: On Windows, `os.path.isabs` returns False
+            # if the given path starts with exactly one (back)slash.
+            # So, on n Windows, Python 3.12 and before return "/a/b"
+            # but on Python 3.13 and later return "c:\a\b"
+            res = fix_path("/a/b", "/root/x", must_exist=False)
+            if sys.version_info < (3, 13):
+                assert res.lower() == r"/a/b"
+            else:
+                assert res.lower() == r"c:\a\b"
         else:
             assert fix_path("a/b", "/root/x", must_exist=False) == "/root/x/a/b"
-        assert fix_path("/a/b", "/root/x", must_exist=False) == "/a/b"
+            assert fix_path("/a/b", "/root/x", must_exist=False) == "/a/b"
 
         headers = [("foo", "bar"), ("baz", "qux")]
         update_headers_in_place(headers, [("Foo", "bar2"), ("New", "new_val")])
@@ -227,12 +236,12 @@ class LoggerTest(unittest.TestCase):
 
         rootOutput, baseOutput = self.getLogOutput()
         # Printed for debugging, when test fails:
-        print("ROOT OUTPUT:\n'{}'\nBASE OUTPUT:\n'{}'".format(rootOutput, baseOutput))
+        print(f"ROOT OUTPUT:\n{rootOutput!r}\nBASE OUTPUT:\n{baseOutput!r}")
 
         # No output should be generated in the root logger
         assert rootOutput == ""
         # The library logger should default to INFO level
-        # (this output will not be visble, because the base logger only has a NullHandler)
+        # (this output will not be visible, because the base logger only has a NullHandler)
         assert ".debug" not in baseOutput
         assert ".info" in baseOutput
         assert ".warning" in baseOutput
@@ -251,12 +260,12 @@ class LoggerTest(unittest.TestCase):
 
         rootOutput, baseOutput = self.getLogOutput()
         # Printed for debugging, when test fails:
-        print("ROOT OUTPUT:\n'{}'\nBASE OUTPUT:\n'{}'".format(rootOutput, baseOutput))
+        print(f"ROOT OUTPUT:\n{rootOutput!r}\nBASE OUTPUT:\n{baseOutput!r}")
 
         # Now output we should see output in the root logger
         assert rootOutput == baseOutput
         # The library logger should default to INFO level
-        # (this output will not be visble, because the base logger only has a NullHandler)
+        # (this output will not be visible, because the base logger only has a NullHandler)
         assert ".debug" not in baseOutput
         assert ".info" in baseOutput
         assert ".warning" in baseOutput
@@ -293,7 +302,7 @@ class LoggerTest(unittest.TestCase):
 
         rootOutput, baseOutput = self.getLogOutput()
         # Printed for debugging, when test fails:
-        print("ROOT OUTPUT:\n'{}'\nBASE OUTPUT:\n'{}'".format(rootOutput, baseOutput))
+        print(f"ROOT OUTPUT:\n{rootOutput!r}\nBASE OUTPUT:\n{baseOutput!r}")
 
         # init_logging() removes all other handlers
         assert rootOutput == ""

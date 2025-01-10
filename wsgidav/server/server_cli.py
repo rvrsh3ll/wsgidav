@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 """
 server_cli
 ==========
@@ -32,6 +31,7 @@ Configuration is defined like this:
        ``--root=FOLDER`` option creates a FilesystemProvider that publishes
        FOLDER on the '/' share.
 """
+
 import argparse
 import copy
 import logging
@@ -158,7 +158,7 @@ See https://github.com/mar10/wsgidav for additional information.
         "--root",
         dest="root_path",
         action=FullExpandedPath,
-        help="path to a file system folder to publish as share '/'.",
+        help="path to a file system folder to publish for RW as share '/'.",
     )
     parser.add_argument(
         "--auth",
@@ -228,20 +228,21 @@ See https://github.com/mar10/wsgidav for additional information.
     del args.quiet
 
     if args.root_path and not os.path.isdir(args.root_path):
-        msg = "{} is not a directory".format(args.root_path)
+        msg = f"{args.root_path} is not a directory"
         parser.error(msg)
 
     if args.version:
         if args.verbose >= 4:
-            version_info = "WsgiDAV/{} Python/{}({} bit) {}".format(
+            version_info = "WsgiDAV/{} {}/{}({} bit) {}".format(
                 __version__,
+                platform.python_implementation(),
                 util.PYTHON_VERSION,
                 "64" if sys.maxsize > 2**32 else "32",
                 platform.platform(aliased=True),
             )
-            version_info += "\nPython from: {}".format(sys.executable)
+            version_info += f"\nPython from: {sys.executable}"
         else:
-            version_info = "{}".format(__version__)
+            version_info = f"{__version__}"
         print(version_info)
         sys.exit()
 
@@ -254,7 +255,7 @@ See https://github.com/mar10/wsgidav for additional information.
             defPath = os.path.abspath(filename)
             if os.path.exists(defPath):
                 if args.verbose >= 3:
-                    print("Using default configuration file: {}".format(defPath))
+                    print(f"Using default configuration file: {defPath}")
                 args.config_file = defPath
                 break
     else:
@@ -262,9 +263,7 @@ See https://github.com/mar10/wsgidav for additional information.
         args.config_file = os.path.abspath(args.config_file)
         if not os.path.isfile(args.config_file):
             parser.error(
-                "Could not find specified configuration file: {}".format(
-                    args.config_file
-                )
+                f"Could not find specified configuration file: {args.config_file}"
             )
 
     # Convert args object to dictionary
@@ -272,7 +271,7 @@ See https://github.com/mar10/wsgidav for additional information.
     if args.verbose >= 5:
         print("Command line args:")
         for k, v in cmdLineOpts.items():
-            print("    {:>12}: {}".format(k, v))
+            print(f"    {k:>12}: {v}")
     return cmdLineOpts, parser
 
 
@@ -282,14 +281,14 @@ def _read_config_file(config_file, _verbose):
     config_file = os.path.abspath(config_file)
 
     if not os.path.exists(config_file):
-        raise RuntimeError(f"Couldn't open configuration file '{config_file}'.")
+        raise RuntimeError(f"Couldn't open configuration file {config_file!r}.")
 
     if config_file.endswith(".json"):
-        with open(config_file, mode="rt", encoding="utf-8-sig") as fp:
+        with open(config_file, encoding="utf-8-sig") as fp:
             conf = json_load(fp)
 
     elif config_file.endswith(".yaml"):
-        with open(config_file, mode="rt", encoding="utf-8-sig") as fp:
+        with open(config_file, encoding="utf-8-sig") as fp:
             conf = yaml.safe_load(fp)
 
     else:
@@ -347,7 +346,10 @@ def _init_config():
 
     if cli_opts.get("root_path"):
         root_path = os.path.abspath(cli_opts.get("root_path"))
-        config["provider_mapping"]["/"] = FilesystemProvider(root_path)
+        config["provider_mapping"]["/"] = FilesystemProvider(
+            root_path,
+            fs_opts=config.get("fs_dav_provider"),
+        )
 
     if config["verbose"] >= 5:
         # TODO: remove passwords from user_mapping
@@ -424,6 +426,10 @@ def _init_config():
     #     # import pydevd
     #     # pydevd.settrace()
 
+    if config["suppress_version_info"]:
+        util.public_wsgidav_info = "WsgiDAV"
+        util.public_python_info = f"Python/{sys.version_info[0]}"
+
     return cli_opts, config
 
 
@@ -436,9 +442,10 @@ def _run_cheroot(app, config, _server):
         _logger.error("Try `pip install cheroot`.")
         return False
 
-    version = wsgi.Server.version
-    version = f"WsgiDAV/{__version__} {version} Python {util.PYTHON_VERSION}"
-    wsgi.Server.version = version
+    version = (
+        f"{util.public_wsgidav_info} {wsgi.Server.version} {util.public_python_info}"
+    )
+    # wsgi.Server.version = version
 
     info = _get_common_info(config)
 
@@ -449,7 +456,7 @@ def _run_cheroot(app, config, _server):
         wsgi.Server.ssl_adapter = ssl_adapter(
             info["ssl_cert"], info["ssl_pk"], info["ssl_chain"]
         )
-        _logger.info("SSL / HTTPS enabled. Adapter: {}".format(ssl_adapter))
+        _logger.info(f"SSL / HTTPS enabled. Adapter: {ssl_adapter}")
 
     _logger.info(f"Running {version}")
     _logger.info(f"Serving on {info['url']} ...")
@@ -507,38 +514,6 @@ def _run_ext_wsgiutils(app, config, _server):
     return
 
 
-# def _run_flup(app, config, server):
-#     """Run WsgiDAV using flup.server.fcgi (http://trac.saddi.com/flup/wiki/FlupServers)."""
-#     try:
-#         if server == "flup-fcgi":
-#             from flup.server.fcgi import WSGIServer
-#             from flup.server.fcgi import __version__ as flupver
-#         elif server == "flup-fcgi-fork":
-#             from flup.server.fcgi_fork import WSGIServer
-#             from flup.server.fcgi_fork import __version__ as flupver
-#         else:
-#             raise ValueError
-#     except ImportError:
-#         _logger.exception(f"Could not import {server} (https://gunicorn.org).")
-#         _logger.error("Try `pip install flup`.")
-#         return False
-
-#     version = f"{WSGIServer.__module__}/{flupver}"
-#     version = f"WsgiDAV/{__version__} {version} Python {util.PYTHON_VERSION}"
-#     _logger.info(f"Running {version} ...")
-
-#     server = WSGIServer(
-#         app,
-#         bindAddress=(config["host"], config["port"]),
-#         # debug=True,
-#     )
-#     try:
-#         server.run()
-#     except KeyboardInterrupt:
-#         _logger.warning("Caught Ctrl-C, shutting down...")
-#     return
-
-
 def _run_gevent(app, config, server):
     """Run WsgiDAV using gevent if gevent (https://www.gevent.org).
 
@@ -560,7 +535,7 @@ def _run_gevent(app, config, server):
 
     info = _get_common_info(config)
     version = f"gevent/{gevent.__version__}"
-    version = f"WsgiDAV/{__version__} {version} Python {util.PYTHON_VERSION}"
+    version = f"{util.public_wsgidav_info} {version} {util.public_python_info}"
 
     # Override or add custom args
     server_args = {
@@ -655,7 +630,7 @@ def _run_gunicorn(app, config, server):
     server_args.update(custom_args)
 
     version = f"gunicorn/{gunicorn.__version__}"
-    version = f"WsgiDAV/{__version__} {version} Python {util.PYTHON_VERSION}"
+    version = f"{util.public_wsgidav_info} {version} {util.public_python_info}"
     _logger.info(f"Running {version} ...")
 
     GunicornApplication(app, server_args).run()
@@ -678,7 +653,7 @@ def _run_paste(app, config, server):
     info = _get_common_info(config)
 
     version = httpserver.WSGIHandler.server_version
-    version = f"WsgiDAV/{__version__} {version} Python {util.PYTHON_VERSION}"
+    version = f"{util.public_wsgidav_info} {version} {util.public_python_info}"
 
     # See http://pythonpaste.org/modules/httpserver.html for more options
     server = httpserver.serve(
@@ -752,7 +727,7 @@ def _run_uvicorn(app, config, server):
     server_args.update(custom_args)
 
     version = f"uvicorn/{uvicorn.__version__}"
-    version = f"WsgiDAV/{__version__} {version} Python {util.PYTHON_VERSION}"
+    version = f"{util.public_wsgidav_info} {version} {util.public_python_info}"
     _logger.info(f"Running {version} ...")
 
     uvicorn.run(app, **server_args)
@@ -763,7 +738,7 @@ def _run_wsgiref(app, config, _server):
     from wsgiref.simple_server import WSGIRequestHandler, make_server
 
     version = WSGIRequestHandler.server_version
-    version = f"WsgiDAV/{__version__} {version}"  # Python {util.PYTHON_VERSION}"
+    version = f"{util.public_wsgidav_info} {version}"  # {util.public_python_info}"
     _logger.info(f"Running {version} ...")
 
     _logger.warning(
@@ -781,10 +756,7 @@ def _run_wsgiref(app, config, _server):
 
 SUPPORTED_SERVERS = {
     "cheroot": _run_cheroot,
-    # "cherrypy": _run__cherrypy,
     "ext-wsgiutils": _run_ext_wsgiutils,
-    # "flup-fcgi_fork": _run_flup,
-    # "flup-fcgi": _run_flup,
     "gevent": _run_gevent,
     "gunicorn": _run_gunicorn,
     "paste": _run_paste,
@@ -796,7 +768,8 @@ SUPPORTED_SERVERS = {
 def run():
     cli_opts, config = _init_config()
 
-    util.init_logging(config)
+    # util.init_logging(config) # now handled in constructor:
+    config["logging"]["enable"] = True
 
     info = _get_common_info(config)
 

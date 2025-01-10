@@ -1,16 +1,16 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
 """
 WSGI middleware that handles GET requests on collections to display directories.
 """
+
 import os
 import sys
 from fnmatch import fnmatch
 from urllib.parse import unquote
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 from wsgidav import __version__, util
 from wsgidav.dav_error import HTTP_MEDIATYPE_NOT_SUPPORTED, HTTP_OK, DAVError
@@ -60,9 +60,7 @@ class WsgiDavDirBrowser(BaseMiddleware):
             self.htdocs_path = os.path.join(os.path.dirname(__file__), "htdocs")
 
         if not os.path.isdir(self.htdocs_path):
-            raise ValueError(
-                "Invalid dir_browser htdocs_path {!r}".format(self.htdocs_path)
-            )
+            raise ValueError(f"Invalid dir_browser htdocs_path {self.htdocs_path!r}")
 
         # Add an additional read-only FS provider that serves the dir_browser assets
         self.wsgidav_app.add_provider(ASSET_SHARE, self.htdocs_path, readonly=True)
@@ -73,7 +71,7 @@ class WsgiDavDirBrowser(BaseMiddleware):
 
         # Prepare a Jinja2 template
         templateLoader = FileSystemLoader(searchpath=self.htdocs_path)
-        templateEnv = Environment(loader=templateLoader)
+        templateEnv = Environment(loader=templateLoader, autoescape=select_autoescape())
         self.template = templateEnv.get_template("template.html")
 
     def is_disabled(self):
@@ -91,7 +89,6 @@ class WsgiDavDirBrowser(BaseMiddleware):
             and dav_res
             and dav_res.is_collection
         ):
-
             if util.get_content_length(environ) != 0:
                 self._fail(
                     HTTP_MEDIATYPE_NOT_SUPPORTED,
@@ -153,9 +150,7 @@ class WsgiDavDirBrowser(BaseMiddleware):
         e = DAVError(value, context_info, src_exception, err_condition)
         if self.verbose >= 4:
             _logger.warning(
-                "Raising DAVError {}".format(
-                    safe_re_encode(e.get_user_info(), sys.stdout.encoding)
-                )
+                f"Raising DAVError {safe_re_encode(e.get_user_info(), sys.stdout.encoding)}"
             )
         raise e
 
@@ -195,7 +190,7 @@ class WsgiDavDirBrowser(BaseMiddleware):
         if trailer:
             trailer = trailer.replace(
                 "${version}",
-                f"<a href='https://github.com/mar10/wsgidav/'>WsgiDAV/{__version__}</a>",
+                f"<a href='https://github.com/mar10/wsgidav/'>{util.public_wsgidav_info}</a>",
             )
             trailer = trailer.replace("${time}", util.get_rfc1123_time())
 
@@ -204,11 +199,11 @@ class WsgiDavDirBrowser(BaseMiddleware):
         rows = context["rows"]
 
         # Ask collection for member info list
-        dirInfoList = dav_res.get_directory_info()
+        dir_info_list = dav_res.get_directory_info()
 
-        if dirInfoList is None:
+        if dir_info_list is None:
             # No pre-build info: traverse members
-            dirInfoList = []
+            dir_info_list = []
             childList = dav_res.get_descendants(depth="1", add_self=False)
             for res in childList:
                 di = res.get_display_info()
@@ -247,6 +242,9 @@ class WsgiDavDirBrowser(BaseMiddleware):
                             ofe_prefix = "vnd.libreoffice.command:ofv|u|"
                             a_classes.append("msoffice")
 
+                if res.is_link():
+                    a_classes.append("symlink")
+
                 entry = {
                     "href": rel_href,
                     "ofe_prefix": ofe_prefix,
@@ -261,14 +259,14 @@ class WsgiDavDirBrowser(BaseMiddleware):
                     "display_type_comment": di.get("typeComment"),
                 }
 
-                dirInfoList.append(entry)
+                dir_info_list.append(entry)
         #
         ignore_patterns = self.dir_config.get("ignore", [])
         if util.is_basestring(ignore_patterns):
             ignore_patterns = ignore_patterns.split(",")
 
         ignored_list = []
-        for entry in dirInfoList:
+        for entry in dir_info_list:
             # Skip ignore patterns
             ignore = False
             for pat in ignore_patterns:
@@ -295,9 +293,7 @@ class WsgiDavDirBrowser(BaseMiddleware):
             rows.append(entry)
         if ignored_list:
             _logger.debug(
-                "Dir browser ignored {} entries: {}".format(
-                    len(ignored_list), ignored_list
-                )
+                f"Dir browser ignored {len(ignored_list)} entries: {ignored_list}"
             )
 
         # sort

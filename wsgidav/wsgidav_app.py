@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Original PyFileServer (c) 2005 Ho Chun Wei.
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
@@ -47,6 +46,7 @@ For every request:
     Note: The OPTIONS method for the '*' path is handled directly.
 
 """
+
 import copy
 import inspect
 import platform
@@ -64,6 +64,7 @@ from wsgidav.lock_man.lock_storage import LockStorageDict
 from wsgidav.mw.base_mw import BaseMiddleware
 from wsgidav.prop_man.property_manager import PropertyManager
 from wsgidav.util import (
+    check_python_version,
     dynamic_import_class,
     dynamic_instantiate_class_from_opts,
     safe_re_encode,
@@ -80,11 +81,12 @@ def _check_config(config):
     mandatory_fields = ("provider_mapping",)
     for field in mandatory_fields:
         if field not in config:
-            errors.append(f"Missing required option '{field}'.")
+            errors.append(f"Missing required option {field!r}.")
 
     deprecated_fields = {
         "acceptbasic": "http_authenticator.accept_basic",
         "acceptdigest": "http_authenticator.accept_digest",
+        "accept_put_without_content_length": "(removed)",
         "catchall": "error_printer.catch_all",
         "debug_litmus": "logging.debug_litmus",
         "debug_methods": "logging.debug_methods",
@@ -122,7 +124,7 @@ def _check_config(config):
             d, v = config, old
 
         if d and v in d:
-            errors.append(f"Deprecated option '{old}': use '{new}' instead.")
+            errors.append(f"Deprecated option {old!r}: use {new!r} instead.")
 
     if errors:
         raise ValueError("Invalid configuration:\n  - " + "\n  - ".join(errors))
@@ -130,19 +132,27 @@ def _check_config(config):
     return True
 
 
+#: Minimal Python version that is supported by WsgiDAV
+MIN_PYTHON_VERSION_INFO = (3, 9)
+
+check_python_version(MIN_PYTHON_VERSION_INFO)
+
+
 # ========================================================================
 # WsgiDAVApp
 # ========================================================================
 class WsgiDAVApp:
     def __init__(self, config):
-
         self.config = copy.deepcopy(DEFAULT_CONFIG)
         util.deep_update(self.config, config)
         config = self.config
 
-        expand = {"${application}": self}
+        if config["logging"].get("enable") is not False:
+            util.init_logging(config)
+        self.logger = util._logger
 
         # Evaluate configuration and set defaults
+        expand = {"${application}": self}
         _check_config(config)
 
         self.verbose = config.get("verbose", 3)
@@ -155,6 +165,7 @@ class WsgiDAVApp:
         self.unquote_path_info = hotfixes.get("unquote_path_info", False)
 
         lock_storage = config.get("lock_storage")
+
         if lock_storage is True:
             lock_storage = LockStorageDict()
         elif isinstance(lock_storage, (str, dict)):
@@ -189,7 +200,7 @@ class WsgiDAVApp:
         if mount_path:
             if not mount_path.startswith("/") or mount_path.endswith("/"):
                 raise ValueError(
-                    f"If a mount_path is set, it must start (but not end) with '/': '{mount_path}'."
+                    f"If a mount_path is set, it must start (but not end) with '/': {mount_path!r}."
                 )
         else:
             mount_path = ""
@@ -257,25 +268,20 @@ class WsgiDAVApp:
             # Add middleware to the stack
             if app:
                 if callable(getattr(app, "is_disabled", None)) and app.is_disabled():
-                    _logger.warning(
-                        "App {}.is_disabled() returned True: skipping.".format(app)
-                    )
+                    _logger.warning(f"App {app}.is_disabled() returned True: skipping.")
                 else:
                     mw_list.append(app)
                     self.application = app
             else:
-                _logger.error("Could not add middleware {}.".format(mw))
+                _logger.error(f"Could not add middleware {mw}.")
 
         _logger.info(
-            "WsgiDAV/{} Python/{} {}".format(
-                __version__, util.PYTHON_VERSION, platform.platform(aliased=True)
-            )
+            f"WsgiDAV/{__version__} Python/{util.PYTHON_VERSION} {platform.platform(aliased=True)}"
         )
+
         if self.verbose >= 4:
             _logger.info(
-                "Default encoding: {!r} (file system: {!r})".format(
-                    sys.getdefaultencoding(), sys.getfilesystemencoding()
-                )
+                f"Default encoding: {sys.getdefaultencoding()!r} (file system: {sys.getfilesystemencoding()!r})"
             )
 
         if self.verbose >= 3:
@@ -301,7 +307,7 @@ class WsgiDAVApp:
                         hint = ""
                 else:
                     hint = " (custom auth)"
-                _logger.info(f"  - '{share}': {provider}{hint}")
+                _logger.info(f"  - {share!r}: {provider}{hint}")
 
         if auth_conf.get("accept_basic") and not config.get("ssl_certificate"):
             _logger.warning(
@@ -312,13 +318,13 @@ class WsgiDAVApp:
             for share, provider in self.provider_map.items():
                 if domain_controller.is_share_anonymous(share):
                     _logger.warning(
-                        "Share '{}' will allow anonymous {} access.".format(
+                        "Share {!r} will allow anonymous {} access.".format(
                             share, "read" if provider.is_readonly() else "write"
                         )
                     )
 
         if self.mount_path:
-            _logger.info(f"Configured mount path: '{self.mount_path}'.")
+            _logger.info(f"Configured mount path: {self.mount_path!r}.")
 
         return
 
@@ -328,18 +334,20 @@ class WsgiDAVApp:
         share = "/" + share.strip("/")
         assert share not in self.provider_map
 
+        fs_opts = self.config.get("fs_dav_provider") or {}
+
         if type(provider) is str:
             # Syntax:
-            #   <>: <folder_path>
+            #   <share_path>: <folder_path>
             # We allow a simple string as 'provider'. In this case we interpret
             # it as a file system root folder that is published.
             provider = util.fix_path(provider, self.config)
-            provider = FilesystemProvider(provider, readonly=readonly)
+            provider = FilesystemProvider(provider, readonly=readonly, fs_opts=fs_opts)
 
-        elif type(provider) in (dict,):
+        elif type(provider) is dict:
             if "class" in provider:
                 # Syntax:
-                #   <>: {"class": <class_path>, "args": <pos_args>, "kwargs": <named_args>}
+                #   <share_path>: {"class": <class_path>, "args": <pos_args>, "kwargs": <named_args>}
                 expand = {"${application}": self}
                 provider = dynamic_instantiate_class_from_opts(provider, expand=expand)
             elif "root" in provider:
@@ -348,19 +356,22 @@ class WsgiDAVApp:
                 provider = FilesystemProvider(
                     util.fix_path(provider["root"], self.config),
                     readonly=bool(provider.get("readonly", False)),
+                    fs_opts=fs_opts,
                 )
             else:
                 raise ValueError(
                     f"Provider expected {{'class': ...}}` or {{'root': ...}}: {provider}"
                 )
+
         elif type(provider) in (list, tuple):
             raise ValueError(
                 f"Provider {provider}: tuple/list syntax is no longer supported"
             )
-            # provider = FilesystemProvider(provider[0], provider[1])
 
         if not isinstance(provider, DAVProvider):
-            raise ValueError(f"Invalid provider {provider}")
+            raise ValueError(
+                f"Invalid provider {provider} (not instance of DAVProvider)"
+            )
 
         provider.set_share_path(share)
         if self.mount_path:
@@ -405,8 +416,7 @@ class WsgiDAVApp:
         return share, self.provider_map.get(share)
 
     def __call__(self, environ, start_response):
-
-        # util.log("SCRIPT_NAME='{}', PATH_INFO='{}'".format(
+        # util.log("SCRIPT_NAME={!r}, PATH_INFO={!r}".format(
         #    environ.get("SCRIPT_NAME"), environ.get("PATH_INFO")))
 
         path = environ["PATH_INFO"]
@@ -439,26 +449,12 @@ class WsgiDAVApp:
 
         # Find DAV provider that matches the share
         share, provider = self.resolve_provider(path)
-        # share = None
-        # lower_path = path.lower()
-        # for r in self.sorted_share_list:
-        #     # @@: Case sensitivity should be an option of some sort here;
-        #     # os.path.normpath might give the preferred case for a filename.
-        #     if r == "/":
-        #         share = r
-        #         break
-        #     elif lower_path == r or lower_path.startswith(r + "/"):
-        #         share = r
-        #         break
 
         # Note: we call the next app, even if provider is None, because OPTIONS
         #       must still be handled.
         #       All other requests will result in '404 Not Found'
-        # if share is not None:
-        #     share_data = self.provider_map.get(share)
-        #     environ["wsgidav.provider"] = share_data["provider"]
-
         environ["wsgidav.provider"] = provider
+
         # TODO: test with multi-level realms: 'aa/bb'
         # TODO: test security: url contains '..'
 
@@ -508,12 +504,10 @@ class WsgiDAVApp:
                 # A typical case: a GET request on a virtual resource, for which
                 # the provider doesn't know the length
                 _logger.error(
-                    "Missing required Content-Length header in {}-response: closing connection".format(
-                        statusCode
-                    )
+                    f"Missing required Content-Length header in {statusCode}-response: closing connection"
                 )
                 forceCloseConnection = True
-            elif not type(currentContentLength) is str:
+            elif type(currentContentLength) is not str:
                 _logger.error(
                     "Invalid Content-Length header in response ({!r}): closing connection".format(
                         headerDict.get("content-length")
@@ -573,7 +567,7 @@ class WsgiDAVApp:
                         "transfer-enc={}".format(environ.get("HTTP_TRANSFER_ENCODING"))
                     )
                 if self.verbose >= 3:
-                    extra.append("elap={:.3f}sec".format(time.time() - start_time))
+                    extra.append(f"elap={time.time() - start_time:.3f}sec")
                 extra = ", ".join(extra)
 
                 # This is the CherryPy format:
@@ -599,8 +593,7 @@ class WsgiDAVApp:
         # Call first middleware
         app_iter = self.application(environ, _start_response_wrapper)
         try:
-            for v in app_iter:
-                yield v
+            yield from app_iter
         finally:
             if hasattr(app_iter, "close"):
                 app_iter.close()

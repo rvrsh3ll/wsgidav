@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Licensed under the MIT license: http://www.opensource.org/licenses/mit-license.php
 """
 Implementation of a WebDAV provider that provides a very basic, read-only
@@ -24,6 +23,7 @@ Valid options are (sample shows defaults)::
             }
 
 """
+
 from io import StringIO
 from pprint import pformat
 
@@ -46,7 +46,7 @@ class ConnectionCollection(DAVCollection):
     """Root collection, lists all mongo databases."""
 
     def __init__(self, path, environ):
-        DAVCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
         self.conn = self.provider.conn
 
     def get_member_names(self):
@@ -60,7 +60,7 @@ class DbCollection(DAVCollection):
     """Mongo database, contains mongo collections."""
 
     def __init__(self, path, environ):
-        DAVCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
         self.conn = self.provider.conn
         self.db = self.conn[self.name]
 
@@ -79,7 +79,7 @@ class CollCollection(DAVCollection):
     """Mongo collections, contains mongo documents."""
 
     def __init__(self, path, environ, coll):
-        DAVCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
         self.conn = self.provider.conn
         self.coll = coll
 
@@ -101,7 +101,7 @@ class DocResource(DAVNonCollection):
     """Mongo document, returned as virtual text resource."""
 
     def __init__(self, path, environ, doc):
-        DAVNonCollection.__init__(self, path, environ)
+        super().__init__(path, environ)
         self.doc = doc
 
     def get_content(self):

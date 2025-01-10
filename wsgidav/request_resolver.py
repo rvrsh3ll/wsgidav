@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Original PyFileServer (c) 2005 Ho Chun Wei.
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
@@ -94,6 +93,7 @@ header, if present, to::
    environ['wsgidav.destresourceAL'] = fileabstractionlayer.MyOwnFilesystemAbstractionLayer()
 
 """
+
 from wsgidav import util
 from wsgidav.dav_error import HTTP_NOT_FOUND, DAVError
 from wsgidav.mw.base_mw import BaseMiddleware
@@ -214,15 +214,16 @@ class RequestResolver(BaseMiddleware):
 
         if provider is None:
             raise DAVError(
-                HTTP_NOT_FOUND, f"Could not find resource provider for '{path}'"
+                HTTP_NOT_FOUND, f"Could not find resource provider for {path!r}"
             )
 
         # Let the appropriate resource provider for the realm handle the
         # request
         app = RequestServer(provider)
         app_iter = app(environ, start_response)
-        for v in app_iter:
-            yield v
+
+        yield from app_iter
+
         if hasattr(app_iter, "close"):
             app_iter.close()
         return

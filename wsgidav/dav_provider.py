@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Original PyFileServer (c) 2005 Ho Chun Wei.
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
@@ -79,12 +78,12 @@ lockStorage
 
 See :doc:`reference_guide` for more information about the WsgiDAV architecture.
 """
+
 import os
 import sys
 import time
 import traceback
 from abc import ABC, abstractmethod
-from datetime import datetime
 from typing import Optional
 from urllib.parse import quote, unquote
 
@@ -156,6 +155,8 @@ class _DAVResource(ABC):
         get_creation_date()
         get_display_name()
         get_etag()
+        get_used_bytes()
+        get_available_bytes()
         get_last_modified()
         support_ranges()
 
@@ -172,11 +173,11 @@ class _DAVResource(ABC):
     def __init__(self, path: str, is_collection: bool, environ: dict):
         assert util.is_str(path)
         assert path == "" or path.startswith("/")
-        self.provider = environ["wsgidav.provider"]
-        self.path = path
-        self.is_collection = is_collection
-        self.environ = environ
-        self.name = util.get_uri_name(self.path)
+        self.provider: DAVProvider = environ["wsgidav.provider"]
+        self.path: str = path
+        self.is_collection: bool = is_collection
+        self.environ: dict = environ
+        self.name: str = util.get_uri_name(self.path)
 
     def __repr__(self):
         return f"{self.__class__.__name__}({self.path!r})"
@@ -218,7 +219,7 @@ class _DAVResource(ABC):
             return None
         raise NotImplementedError
 
-    def get_creation_date(self) -> Optional[datetime]:
+    def get_creation_date(self) -> Optional[float]:
         """Records the time and date the resource was created.
 
         The creationdate property should be defined on all DAV compliant
@@ -267,7 +268,7 @@ class _DAVResource(ABC):
         elif os.extsep in self.name:
             ext = self.name.split(os.extsep)[-1].upper()
             if len(ext) < 5:
-                return {"type": "{}-File".format(ext)}
+                return {"type": f"{ext}-File"}
         return {"type": "File"}
 
     def get_etag(self):
@@ -275,6 +276,22 @@ class _DAVResource(ABC):
         See http://www.webdav.org/specs/rfc4918.html#PROPERTY_getetag
 
         This method SHOULD be implemented, especially by non-collections.
+        """
+        return None
+
+    def get_used_bytes(self) -> Optional[int]:
+        """Return used bytes of the DAV collection.
+        See http://www.webdav.org/specs/rfc4331.html#quota-used-bytes
+
+        This method COULD be implemented for collection resources.
+        """
+        return None
+
+    def get_available_bytes(self) -> Optional[int]:
+        """Return available bytes of the DAV collection.
+        See http://www.webdav.org/specs/rfc4331.html#quota-available-bytes
+
+        This method COULD be implemented for collection resources.
         """
         return None
 
@@ -294,6 +311,9 @@ class _DAVResource(ABC):
         This method SHOULD be implemented, especially by non-collections.
         """
         return None
+
+    def is_link(self):
+        return False
 
     def set_last_modified(self, dest_path, time_stamp, *, dry_run):
         """Set last modified time for destPath to timeStamp on epoch-format"""
@@ -370,7 +390,7 @@ class _DAVResource(ABC):
         return quote(self.provider.share_path + self.get_preferred_path())
 
     #    def getRefKey(self):
-    #        """Return an unambigous identifier string for a resource.
+    #        """Return an unambiguous identifier string for a resource.
     #
     #        Since it is always unique for one resource, <refKey> is used as key for
     #        the lock- and property storage dictionaries.
@@ -531,6 +551,10 @@ class _DAVResource(ABC):
             propNameList.append("{DAV:}getcontentlength")
         if self.get_content_type() is not None:
             propNameList.append("{DAV:}getcontenttype")
+        if self.get_used_bytes() is not None:
+            propNameList.append("{DAV:}quota-used-bytes")
+        if self.get_available_bytes() is not None:
+            propNameList.append("{DAV:}quota-available-bytes")
         if self.get_last_modified() is not None:
             propNameList.append("{DAV:}getlastmodified")
         if self.get_display_name() is not None:
@@ -706,6 +730,10 @@ class _DAVResource(ABC):
                     etree.SubElement(resourcetypeEL, "{DAV:}collection")
                     return resourcetypeEL
                 return ""
+            elif name == "{DAV:}quota-used-bytes":
+                return self.get_used_bytes()
+            elif name == "{DAV:}quota-available-bytes":
+                return self.get_available_bytes()
             elif (
                 name == "{DAV:}getlastmodified" and self.get_last_modified() is not None
             ):
@@ -792,16 +820,14 @@ class _DAVResource(ABC):
                     )
                 except Exception:
                     _logger.warning(
-                        "Provider does not support set_last_modified on {}.".format(
-                            self.path
-                        )
+                        f"Provider does not support set_last_modified on {self.path}."
                     )
 
             # Unsupported or not allowed
             raise DAVError(HTTP_FORBIDDEN)
 
         # Handle MS Windows Win32LastModifiedTime, if enabled.
-        # Note that the WebDAV client in Win7 and earler has issues and can't be used
+        # Note that the WebDAV client in Win7 and earlier has issues and can't be used
         # with this so we ignore older clients. Others pre-Win10 should be tested.
         if name.startswith("{urn:schemas-microsoft-com:}"):
             agent = self.environ.get("HTTP_USER_AGENT", "None")
@@ -1071,7 +1097,7 @@ class _DAVResource(ABC):
           - Live properties should be moved too (e.g. creationdate)
           - Non-collections must be moved, not copied
           - For collections, this function behaves like in copy-mode:
-            detination collection must be created and properties are copied.
+            destination collection must be created and properties are copied.
             Members are NOT created.
             The source collection MUST NOT be removed.
 
@@ -1200,7 +1226,7 @@ class DAVNonCollection(_DAVResource):
     """
 
     def __init__(self, path: str, environ: dict):
-        _DAVResource.__init__(self, path, False, environ)
+        super().__init__(path, False, environ)
 
     @abstractmethod
     def get_content_length(self):
@@ -1301,8 +1327,8 @@ class DAVCollection(_DAVResource):
     See also _DAVResource
     """
 
-    def __init__(self, path, environ):
-        _DAVResource.__init__(self, path, True, environ)
+    def __init__(self, path: str, environ: dict) -> None:
+        super().__init__(path, True, environ)
 
         # Allow caching of members
 
@@ -1340,13 +1366,13 @@ class DAVCollection(_DAVResource):
     #    def getContentLanguage(self):
     #        return None
 
-    def get_content_length(self):
+    def get_content_length(self) -> Optional[int]:
         return None
 
-    def get_content_type(self):
+    def get_content_type(self) -> Optional[str]:
         return None
 
-    def create_empty_resource(self, name):
+    def create_empty_resource(self, name: str) -> _DAVResource:
         """Create and return an empty (length-0) resource as member of self.
 
         Called for LOCK requests on unmapped URLs.
@@ -1545,7 +1571,7 @@ class DAVProvider(ABC):
         return "/" + unquote(util.removeprefix(ref_url, self.share_path)).lstrip("/")
 
     @abstractmethod
-    def get_resource_inst(self, path, environ):
+    def get_resource_inst(self, path: str, environ: dict):
         """Return a _DAVResource object for path.
 
         Should be called only once per request and resource::
@@ -1563,7 +1589,7 @@ class DAVProvider(ABC):
         """
         raise NotImplementedError
 
-    def exists(self, path, environ):
+    def exists(self, path: str, environ: dict):
         """Return True, if path maps to an existing resource.
 
         This method should only be used, if no other information is queried
@@ -1573,7 +1599,7 @@ class DAVProvider(ABC):
         """
         return self.get_resource_inst(path, environ) is not None
 
-    def is_collection(self, path, environ):
+    def is_collection(self, path: str, environ: dict):
         """Return True, if path maps to an existing collection resource.
 
         This method should only be used, if no other information is queried

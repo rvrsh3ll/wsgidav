@@ -1,15 +1,15 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Original PyFileServer (c) 2005 Ho Chun Wei.
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
 """
 Implements a DAVError class that is used to signal WebDAV and HTTP errors.
 """
+
 import datetime
 from html import escape as html_escape
 
-from wsgidav import __version__, util, xml_tools
+from wsgidav import util, xml_tools
 from wsgidav.xml_tools import etree
 
 __docformat__ = "reStructuredText"
@@ -91,8 +91,8 @@ ERROR_DESCRIPTIONS = {
     HTTP_NOT_FOUND: "404 Not Found",
     HTTP_CONFLICT: "409 Conflict",
     HTTP_PRECONDITION_FAILED: "412 Precondition Failed",
-    HTTP_RANGE_NOT_SATISFIABLE: "416 Range Not Satisfiable",
     HTTP_MEDIATYPE_NOT_SUPPORTED: "415 Media Type Not Supported",
+    HTTP_RANGE_NOT_SATISFIABLE: "416 Range Not Satisfiable",
     HTTP_LOCKED: "423 Locked",
     HTTP_FAILED_DEPENDENCY: "424 Failed Dependency",
     HTTP_INTERNAL_ERROR: "500 Internal Server Error",
@@ -136,7 +136,7 @@ class DAVErrorCondition:
         self.hrefs = []
 
     def __str__(self):
-        return "{}({})".format(self.condition_code, self.hrefs)
+        return f"{self.condition_code}({self.hrefs})"
 
     def add_href(self, href):
         assert href.startswith("/")
@@ -182,7 +182,13 @@ class DAVError(Exception):
     #     This would be helpful for debugging.
 
     def __init__(
-        self, status_code, context_info=None, *, src_exception=None, err_condition=None
+        self,
+        status_code,
+        context_info=None,
+        *,
+        src_exception=None,
+        err_condition=None,
+        add_headers=None,
     ):
         # allow passing of Pre- and Postconditions, see
         # http://www.webdav.org/specs/rfc4918.html#precondition.postcondition.xml.elements
@@ -190,6 +196,7 @@ class DAVError(Exception):
         self.context_info = context_info
         self.src_exception = src_exception
         self.err_condition = err_condition
+        self.add_headers = add_headers
         if util.is_str(err_condition):
             self.err_condition = DAVErrorCondition(err_condition)
         assert (
@@ -197,25 +204,28 @@ class DAVError(Exception):
         )
 
     def __repr__(self):
-        return "DAVError({})".format(self.get_user_info())
+        return f"DAVError({self.get_user_info()})"
 
     def get_user_info(self):
         """Return readable string."""
         if self.value in ERROR_DESCRIPTIONS:
-            s = "{}".format(ERROR_DESCRIPTIONS[self.value])
+            s = f"{ERROR_DESCRIPTIONS[self.value]}"
         else:
-            s = "{}".format(self.value)
+            s = f"{self.value}"
 
         if self.context_info:
-            s += ": {}".format(self.context_info)
+            s += f": {self.context_info}"
         elif self.value in ERROR_RESPONSES:
-            s += ": {}".format(ERROR_RESPONSES[self.value])
+            s += f": {ERROR_RESPONSES[self.value]}"
 
         if self.src_exception:
-            s += "\n    Source exception: '{}'".format(self.src_exception)
+            s += f"\n    Source exception: {self.src_exception!r}"
 
         if self.err_condition:
-            s += "\n    Error condition: '{}'".format(self.err_condition)
+            s += f"\n    Error condition: {self.err_condition!r}"
+
+        # if self.add_headers:
+        #     s += f"\n    Add headers: {self.add_headers}"
         return s
 
     def get_response_page(self):
@@ -238,14 +248,15 @@ class DAVError(Exception):
         html.append(
             "  <meta http-equiv='Content-Type' content='text/html; charset=utf-8'>"
         )
-        html.append("  <title>{}</title>".format(status))
+        html.append(f"  <title>{status}</title>")
         html.append("</head><body>")
-        html.append("  <h1>{}</h1>".format(status))
-        html.append("  <p>{}</p>".format(html_escape(self.get_user_info())))
+        html.append(f"  <h1>{status}</h1>")
+        html.append(f"  <p>{html_escape(self.get_user_info())}</p>")
         html.append("<hr/>")
         html.append(
-            "<a href='https://github.com/mar10/wsgidav/'>WsgiDAV/{}</a> - {}".format(
-                __version__, html_escape(str(datetime.datetime.now()), "utf-8")
+            "<a href='https://github.com/mar10/wsgidav/'>{}</a> - {}".format(
+                util.public_wsgidav_info,
+                html_escape(str(datetime.datetime.now()), "utf-8"),
             )
         )
         html.append("</body></html>")
@@ -257,8 +268,7 @@ def get_http_status_code(v):
     """Return HTTP response code as integer, e.g. 204."""
     if hasattr(v, "value"):
         return int(v.value)  # v is a DAVError
-    else:
-        return int(v)
+    return int(v)
 
 
 def get_http_status_string(v):
@@ -271,7 +281,7 @@ def get_http_status_string(v):
     try:
         return ERROR_DESCRIPTIONS[code]
     except KeyError:
-        return "{} Status".format(code)
+        return f"{code} Status"
 
 
 def get_response_page(v):
@@ -287,4 +297,4 @@ def as_DAVError(e):
         # traceback.print_exc()
         return DAVError(HTTP_INTERNAL_ERROR, src_exception=e)
     else:
-        return DAVError(HTTP_INTERNAL_ERROR, "{}".format(e))
+        return DAVError(HTTP_INTERNAL_ERROR, f"{e}")

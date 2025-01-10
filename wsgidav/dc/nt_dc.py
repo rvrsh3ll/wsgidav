@@ -1,5 +1,4 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Original PyFileServer (c) 2005 Ho Chun Wei.
 # Licensed under the MIT license: http://www.opensource.org/licenses/mit-license.php
 """
@@ -75,6 +74,7 @@ Testability and caveats
    This class is being tested for a network domain (I'm setting one up to test).
 
 """
+
 import win32net
 import win32netcon
 import win32security
@@ -96,8 +96,8 @@ class NTDomainController(BaseDomainController):
         self.preset_server = dc_conf.get("preset_server")
 
     def __str__(self):
-        return "{}({!r}, {!r})".format(
-            self.__class__.__name__, self.preset_domain, self.preset_server
+        return (
+            f"{self.__class__.__name__}({self.preset_domain!r}, {self.preset_server!r})"
         )
 
     def get_domain_realm(self, path_info, environ):
@@ -181,13 +181,12 @@ class NTDomainController(BaseDomainController):
                     if un == userinfo["name"].lower():
                         return True
             except win32net.error as e:
-                _logger.exception("NetUserEnum: {}".format(e))
+                _logger.exception(f"NetUserEnum: {e}")
                 return False
-        _logger.info("User {!r} not found on server {!r}".format(user_name, server))
+        _logger.info(f"User {user_name!r} not found on server {server!r}")
         return False
 
     def _auth_user(self, user_name, password, domain, server):
-
         # TODO: implement caching?
 
         # TODO: is this pre-test efficient, or should we simply try LogonUser()?
@@ -205,18 +204,16 @@ class NTDomainController(BaseDomainController):
                 win32security.LOGON32_PROVIDER_DEFAULT,
             )
             if not htoken:
-                _logger.warning(
-                    "LogonUser('{}', '{}', '***') failed.".format(user_name, domain)
-                )
+                _logger.warning(f"LogonUser({user_name!r}, {domain!r}, '***') failed.")
                 return False
         except win32security.error as err:
             _logger.warning(
-                "LogonUser('{}', '{}', '***') failed: {}".format(user_name, domain, err)
+                f"LogonUser({user_name!r}, {domain!r}, '***') failed: {err}"
             )
             return False
         finally:
             if htoken:
                 htoken.Close()
 
-        _logger.debug("User '{}' logged on.".format(user_name))
+        _logger.debug(f"User {user_name!r} logged on.")
         return True

@@ -1,12 +1,12 @@
-# -*- coding: utf-8 -*-
-# (c) 2009-2022 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
+# (c) 2009-2024 Martin Wendt and contributors; see WsgiDAV https://github.com/mar10/wsgidav
 # Licensed under the MIT license:
 # http://www.opensource.org/licenses/mit-license.php
 """
-    Functional test suite for WsgiDAV.
+Functional test suite for WsgiDAV.
 
-    This test suite uses requests to generate HTTP requests.
+This test suite uses requests to generate HTTP requests.
 """
+
 import unittest
 
 import requests
